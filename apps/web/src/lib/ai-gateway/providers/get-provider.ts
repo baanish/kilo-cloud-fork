@@ -11,7 +11,6 @@ import { db } from '@/lib/drizzle';
 import { eq } from 'drizzle-orm';
 import type { AnonymousUserContext } from '@/lib/anonymous';
 import { isAnonymousContext } from '@/lib/anonymous';
-import { getCustomUpstreamForModel } from '@/lib/ai-gateway/byok/custom-upstreams';
 import type { BYOKResult, Provider } from '@/lib/ai-gateway/providers/types';
 import PROVIDERS from '@/lib/ai-gateway/providers/provider-definitions';
 import { getDirectByokModel } from '@/lib/ai-gateway/providers/direct-byok';
@@ -46,7 +45,6 @@ export type GetProviderProviderResult = {
    *  by direct-byok and custom_llm2 because both already require explicit
    *  admin opt-in. */
   bypassAccessCheck: boolean;
-  isByok: boolean;
   /** Skip pinning `body.provider` from the organization-determined config.
    *  Set for direct experiment upstreams where the partner endpoint is
    *  selected by the variant, not by gateway routing. */
@@ -98,7 +96,6 @@ async function checkDirectBYOK(
     } satisfies Provider,
     userByok,
     bypassAccessCheck: true,
-    isByok: false,
   };
 }
 
@@ -135,7 +132,6 @@ async function checkCustomLlm(
     }),
     userByok: null,
     bypassAccessCheck: true,
-    isByok: true,
   };
 }
 
@@ -177,32 +173,6 @@ export type GetProviderInput = {
 export async function getProvider(input: GetProviderInput): Promise<GetProviderResult> {
   const { requestedModel, request, user, organizationId, taskId, clientIp, machineId } = input;
 
-  if (!isAnonymousContext(user)) {
-    const customUpstream = await getCustomUpstreamForModel(
-      db,
-      { userId: user.id, organizationId },
-      requestedModel
-    );
-    if (customUpstream) {
-      return {
-        kind: 'provider',
-        provider: {
-          id: 'custom',
-          apiUrl: customUpstream.baseUrl,
-          apiKey: customUpstream.apiKey,
-          supportedChatApis: ['chat_completions'],
-          transformRequest(context) {
-            context.request.body.model = customUpstream.upstreamModelId;
-            Object.assign(context.extraHeaders, customUpstream.extraHeaders);
-          },
-        },
-        userByok: null,
-        bypassAccessCheck: true,
-        isByok: true,
-      };
-    }
-  }
-
   const directByokByok = await checkDirectBYOK(user, requestedModel, organizationId);
   if (directByokByok) {
     return directByokByok;
@@ -215,7 +185,6 @@ export async function getProvider(input: GetProviderInput): Promise<GetProviderR
       provider: PROVIDERS.VERCEL_AI_GATEWAY,
       userByok: vercelByok,
       bypassAccessCheck: false,
-      isByok: false,
     };
   }
 
@@ -243,7 +212,6 @@ export async function getProvider(input: GetProviderInput): Promise<GetProviderR
         provider: buildDirectProvider(selection.upstream),
         userByok: null,
         bypassAccessCheck: false,
-        isByok: false,
         skipProviderPin: true,
         skipKiloExclusiveModelSettings: true,
         experiment: {
@@ -278,7 +246,6 @@ export async function getProvider(input: GetProviderInput): Promise<GetProviderR
       provider: PROVIDERS.VERCEL_AI_GATEWAY,
       userByok: null,
       bypassAccessCheck: false,
-      isByok: false,
     };
   }
 
@@ -289,7 +256,6 @@ export async function getProvider(input: GetProviderInput): Promise<GetProviderR
       PROVIDERS.OPENROUTER,
     userByok: null,
     bypassAccessCheck: false,
-    isByok: false,
   };
 }
 

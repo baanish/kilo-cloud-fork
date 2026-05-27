@@ -409,7 +409,6 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
     skipProviderPin,
     skipKiloExclusiveModelSettings,
     experiment,
-    isByok,
   } = providerResult;
 
   // Request-level data-collection opt-out: a caller can set
@@ -440,7 +439,7 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
     organizationId,
     projectId,
     provider: provider.id,
-    isByok: isByok || !!userByok,
+    isByok: !!userByok,
     feature,
   });
 
@@ -482,7 +481,7 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
     status_code: null,
     editor_name: extractHeaderAndLimitLength(request, 'x-kilocode-editorname'),
     machine_id: machineIdHeader,
-    user_byok: isByok || !!userByok,
+    user_byok: !!userByok,
     has_tools: (requestBodyParsed.body.tools?.length ?? 0) > 0,
     botId,
     tokenSource,
@@ -638,8 +637,8 @@ export async function POST(request: NextRequest): Promise<NextResponseType<unkno
   usageContext.status_code = response.status;
 
   // Handle OpenRouter 402 errors - don't pass them through to the client. We need to pay, not them.
-  // Skip conversion when provider-level (custom upstream) BYOK or user-level BYOK is used (`response.status === 402 && !(isByok || !!userByok)`).
-  if (response.status === 402 && !(isByok || !!userByok)) {
+  // Skip this conversion when user BYOK is used - the 402 is about their account, not ours.
+  if (response.status === 402 && !userByok) {
     await captureProxyError({
       user,
       request: requestBodyParsed.body,
